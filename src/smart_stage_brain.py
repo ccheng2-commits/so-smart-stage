@@ -29,6 +29,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 import wave
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1007,7 +1008,6 @@ if __name__ == "__main__":
 
 
 # ========== Voice Assistant (Jabra ↔ Gemini ↔ Figurate TTS) ==========
-import urllib.request
-
-
-
+# Note: urllib.request is now imported at the top of the module so that
+# _voice_assistant_respond (launched as a daemon thread from the ASR loop)
+# can actually find it at runtime.
