@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Stage</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e0e0e0;height:100vh;overflow:hidden}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#111;border-bottom:1px solid #222}
+.header .class-name{font-size:20px;font-weight:700}
+.header .time-info{font-size:14px;color:#888}
+.header .audio-btn{background:#222;border:1px solid #444;color:#e0e0e0;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px}
+.header .audio-btn.active{background:#2ed573;color:#000;border-color:#2ed573}
+#voice-btn.active{background:#a55eea;color:#fff;border-color:#a55eea}
+
+.grid{display:grid;grid-template-columns:240px 1fr 280px;height:calc(100vh - 50px - 30px);gap:1px;background:#222}
+.panel{background:#111;padding:12px;overflow:hidden}
+.panel-title{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#555;margin-bottom:8px}
+
+/* Center: cameras */
+.cam-grid{display:flex;flex-direction:column;gap:4px;height:calc(100% - 24px);justify-content:center;align-items:center}
+.cam-item{flex-shrink:0;width:100%;display:flex;flex-direction:column;align-items:center}
+.cam-img{height:calc((100vh - 140px) / 3);aspect-ratio:16/9;max-width:100%;border-radius:6px;background:#000;object-fit:cover}
+.cam-label{font-size:11px;color:#888;display:flex;justify-content:space-between;width:100%;max-width:calc((100vh - 140px) / 3 * 16 / 9);padding:2px 2px 0;flex-shrink:0}
+.cam-label .people{color:#2ed573;font-weight:600}
+.total-people{text-align:center;font-size:28px;font-weight:700;margin-top:4px;color:#4a9eff}
+
+/* Left: state */
+.state-panel{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;padding-top:32px}
+.state-icon{font-size:56px;margin-bottom:4px}
+.state-label{font-size:36px;font-weight:700;transition:color 0.5s}
+.state-conf{font-size:16px;color:#888;margin-top:4px}
+.state-calendar{margin-top:12px;padding:8px 12px;background:#1a1a1a;border-radius:8px;font-size:12px;color:#888}
+.prob-bar-wrap{width:100%;margin-top:20px}
+.prob-row{margin:4px 0}
+.prob-header{display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px}
+.prob-track{height:16px;background:#1a1a1a;border-radius:3px;overflow:hidden}
+.prob-fill{height:100%;border-radius:3px;transition:width 0.5s}
+.prob-fill.empty_room{background:rgba(74,158,255,0.3);border:1px solid #4a9eff}
+.prob-fill.lecture{background:rgba(255,159,67,0.3);border:1px solid #ff9f43}
+.prob-fill.group_work{background:rgba(46,213,115,0.3);border:1px solid #2ed573}
+.prob-fill.individual_work{background:rgba(165,94,234,0.3);border:1px solid #a55eea}
+
+/* Right: captions */
+.caption-area{flex:1;font-size:18px;line-height:1.6;white-space:pre-wrap;word-wrap:break-word}
+.caption-partial{color:#666;font-style:italic}
+.caption-off{color:#444;font-size:14px;text-align:center;margin-top:40px}
+
+/* Footer */
+.footer{display:flex;justify-content:space-between;padding:6px 20px;background:#111;border-top:1px solid #222;font-size:11px;color:#555}
+.footer .online{color:#2ed573} .footer .offline{color:#f44}
+
+/* Audio overlay */
+.audio-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer}
+.audio-overlay .prompt{text-align:center;font-size:24px;color:#fff}
+.audio-overlay .prompt small{display:block;margin-top:8px;font-size:14px;color:#888}
+.hidden{display:none}
+.chat-bar{display:flex;gap:8px;padding:8px 20px;background:#111;border-top:1px solid #222}
+.chat-bar input{flex:1;background:#1a1a1a;border:1px solid #333;color:#e0e0e0;padding:6px 12px;border-radius:6px;font-size:13px;outline:none}
+.chat-bar input:focus{border-color:#a55eea}
+</style>
+</head>
+<body>
+
+<div class="audio-overlay" id="audio-overlay" onclick="initAudio()">
+  <div class="prompt">Click to Enable Audio<small>Required for ambient music playback</small></div>
+</div>
+
+<div class="header">
+  <div>
+    <span class="class-name" id="class-name">Smart Stage</span>
+    <span class="time-info" id="time-info"></span>
+  </div>
+  <div>
+    <span id="clock" style="margin-right:16px;color:#888"></span>
+    <button class="audio-btn" id="voice-btn" onclick="toggleVoice()">Voice Off</button>
+    <button class="audio-btn" id="audio-btn" onclick="toggleAudio()">Audio Off</button>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Left: State -->
+  <div class="panel state-panel">
+    <div class="panel-title">Detected State</div>
+    <div class="state-icon" id="state-icon">--</div>
+    <div class="state-label" id="state-label">Connecting...</div>
+    <div class="state-conf" id="state-conf"></div>
+    <div class="state-calendar" id="state-calendar">Loading schedule...</div>
+    <div class="prob-bar-wrap" id="prob-bars"></div>
+    <div class="total-people" id="total-people" style="margin-top:20px">0</div>
+    <div style="text-align:center;font-size:11px;color:#555">Total People</div>
+  </div>
+
+  <!-- Center: Cameras -->
+  <div class="panel">
+    <div class="panel-title">Cameras</div>
+    <div class="cam-grid">
+      <div class="cam-item">
+        <img class="cam-img" id="img-cam1" src="/cam1.jpg" onerror="this.style.opacity=0.2">
+        <div class="cam-label"><span>Cam 1</span><span class="people" id="p-cam1">-</span></div>
+      </div>
+      <div class="cam-item">
+        <img class="cam-img" id="img-cam2" src="/cam2.jpg" onerror="this.style.opacity=0.2">
+        <div class="cam-label"><span>Cam 2</span><span class="people" id="p-cam2">-</span></div>
+      </div>
+      <div class="cam-item">
+        <img class="cam-img" id="img-cam3" src="/cam3.jpg" onerror="this.style.opacity=0.2">
+        <div class="cam-label"><span>Cam 3</span><span class="people" id="p-cam3">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Captions -->
+  <div class="panel" style="display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div class="panel-title" style="margin-bottom:0">Live Captions</div>
+      <button class="audio-btn" id="caption-btn" onclick="toggleCaption()" style="padding:4px 12px;font-size:11px">Caption Off</button>
+    </div>
+    <div class="caption-off" id="caption-off">Captions activate during lecture mode</div>
+    <div class="caption-area" id="caption-area"></div>
+  </div>
+</div>
+
+
+<div class="footer">
+  <span>Smart Stage v1.0</span>
+  <span>Calendar: <span id="f-cal" class="offline">-</span></span>
+  <span>V-JEPA: <span id="f-vjepa" class="offline">-</span></span>
+  <span>ASR: <span id="f-asr" class="offline">off</span></span>
+  <span id="f-ws" class="offline">WS: disconnected</span>
+</div>
+
+<script>
+const ICONS={empty_room:'🏫',lecture:'📖',group_work:'👥',individual_work:'✍️'};
+const LABELS={empty_room:'Empty Room',lecture:'Lecture',group_work:'Group Work',individual_work:'Individual Work'};
+const COLORS={empty_room:'#4a9eff',lecture:'#ff9f43',group_work:'#2ed573',individual_work:'#a55eea'};
+const STAGE_LABELS={idle:'Idle',pre_class:'Pre-Class',class_active:'Class Active',class_ending:'Class Ending',post_class:'Post-Class'};
+
+let ws=null, audioCtx=null, audioEnabled=false, tracks={}, currentSource=null, currentTrack=null;
+let prevStageState=null, prevSubmode=null, prevPeopleCount=0, ttsQueue=[], ttsSpeaking=false, voiceEnabled=false;
+// Client-side TTS/LLM credentials. Set window.FG_KEY / window.FG_CHAR / window.GEMINI_KEY
+// in a private config.js (gitignored) before this script runs. If absent, the voice features
+// silently no-op; captions and music still work.
+const FG_API=window.FG_API || 'https://disciplined-amazement-production.up.railway.app/api/voice/tts';
+const FG_KEY=window.FG_KEY || '';
+const FG_CHAR=window.FG_CHAR || '';
+const GEMINI_KEY=window.GEMINI_KEY || '';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+GEMINI_KEY;
+
+// Clock
+setInterval(()=>{document.getElementById('clock').textContent=new Date().toLocaleTimeString()},1000);
+
+// Camera refresh
+setInterval(()=>{
+  for(const id of['cam1','cam2','cam3']){
+    const img=document.getElementById('img-'+id);
+    img.src='/'+id+'.jpg?t='+Date.now();
+  }
+},1500);
+
+// Init prob bars
+function initBars(){
+  const c=document.getElementById('prob-bars');c.innerHTML='';
+  for(const cls of['empty_room','lecture','group_work','individual_work']){
+    c.innerHTML+=`<div class="prob-row"><div class="prob-header"><span>${LABELS[cls]}</span><span id="pv-${cls}">0%</span></div><div class="prob-track"><div class="prob-fill ${cls}" id="pf-${cls}" style="width:0%"></div></div></div>`;
+  }
+}
+initBars();
+
+// WebSocket
+function connect(){
+  const host=location.hostname||'localhost';
+  ws=new WebSocket(`ws://${host}:8091`);
+  ws.onopen=()=>{document.getElementById('f-ws').textContent='WS: connected';document.getElementById('f-ws').className='online'};
+  ws.onclose=()=>{document.getElementById('f-ws').textContent='WS: reconnecting...';document.getElementById('f-ws').className='offline';setTimeout(connect,3000)};
+  ws.onerror=()=>{};
+  ws.onmessage=(e)=>{
+    const d=JSON.parse(e.data);
+    if(d.type==='state_update'||d.type==='init'){
+      const s=d.state||d.stage||d;
+      updateState(d);
+    }
+    if(d.type==='caption') updateCaption(d);
+    if(d.type==='music_command') handleMusic(d);
+  };
+}
+
+function updateState(d){
+  const stage=d.stage||{};
+  const vj=d.vjepa||{};
+  const cal=d.calendar||{};
+  const cams=d.cameras||{};
+
+  // State display
+  const cls=vj['class']||'unknown';
+  const stageState=stage.state||'idle';
+  const submode=stage.submode||'';
+
+  document.getElementById('state-icon').textContent=ICONS[cls]||'❓';
+  const label=stageState==='class_active'?(LABELS[submode]||stageState):(STAGE_LABELS[stageState]||stageState);
+  document.getElementById('state-label').textContent=label;
+  document.getElementById('state-label').style.color=COLORS[cls]||'#fff';
+  document.getElementById('state-conf').textContent=vj.confidence?`${(vj.confidence*100).toFixed(1)}% · V-JEPA`:'';
+
+  // Calendar
+  const cc=cal.current_class;
+  if(cc){
+    const end=new Date(cc.end_time);
+    const mins=Math.max(0,Math.round((end-new Date())/60000));
+    document.getElementById('class-name').textContent=cc.name||'Smart Stage';
+    document.getElementById('time-info').textContent=` · ${mins} min remaining`;
+    document.getElementById('state-calendar').textContent=`Calendar: ${cal.state} · ${cc.name} · ends ${end.toLocaleTimeString()}`;
+  } else {
+    const nc=cal.next_class;
+    document.getElementById('class-name').textContent='Smart Stage';
+    document.getElementById('time-info').textContent=nc?` · Next: ${nc.name}`:'';
+    document.getElementById('state-calendar').textContent=`Calendar: ${cal.state}${nc?' · Next: '+nc.name:''}`;
+  }
+
+  // Cameras
+  for(const[cid,info] of Object.entries(cams)){
+    const el=document.getElementById('p-'+cid);
+    if(el) el.textContent=info.people+' people';
+  }
+  document.getElementById('total-people').textContent=d.total_people||0;
+
+  // Probabilities
+  const probs=vj.probabilities||{};
+  for(const[name,p] of Object.entries(probs)){
+    const pct=(p*100).toFixed(1);
+    const f=document.getElementById('pf-'+name);
+    const v=document.getElementById('pv-'+name);
+    if(f)f.style.width=pct+'%';
+    if(v)v.textContent=pct+'%';
+  }
+
+  // Footer
+  document.getElementById('f-cal').textContent=cal.state||'-';
+  document.getElementById('f-cal').className=cal.state==='in_class'?'online':'offline';
+  document.getElementById('f-vjepa').textContent=cls+' '+(vj.confidence?(vj.confidence*100).toFixed(0)+'%':'');
+  document.getElementById('f-vjepa').className=vj.ts?'online':'offline';
+
+  // Caption status
+  const cap=d.caption||{};
+  document.getElementById('f-asr').textContent=cap.active?'on':'off';
+  document.getElementById('f-asr').className=cap.active?'online':'offline';
+  if(!cap.active){
+    document.getElementById('caption-off').classList.remove('hidden');
+  }else{
+    document.getElementById('caption-off').classList.add('hidden');
+  }
+  // Sync caption button state
+  captionOn=!!cap.active;
+  const cbtn=document.getElementById('caption-btn');
+  cbtn.textContent=captionOn?'Caption On':'Caption Off';
+  cbtn.classList.toggle('active',captionOn);
+
+  // Save state for chat and voice announcements
+  _saveState(d);
+  checkStateAnnounce(d);
+}
+
+function updateCaption(d){
+  const area=document.getElementById('caption-area');
+  const off=document.getElementById('caption-off');
+  off.classList.add('hidden');
+  let html=(d.text||'').replace(/\n/g,'<br>');
+  if(d.partial) html+='<span class="caption-partial"> '+d.partial+'</span>';
+  area.innerHTML=html;
+  area.scrollTop=area.scrollHeight;
+}
+
+// Audio engine
+async function initAudio(){
+  document.getElementById('audio-overlay').classList.add('hidden');
+  audioCtx=new AudioContext();
+  audioEnabled=true;
+  document.getElementById('audio-btn').textContent='Audio On';
+  document.getElementById('audio-btn').classList.add('active');
+  // Preload tracks
+  for(const name of['welcome','farewell','bg_light','chime']){
+    try{
+      const resp=await fetch('/audio/'+name+'.wav');
+      const buf=await resp.arrayBuffer();
+      tracks[name]=await audioCtx.decodeAudioData(buf);
+    }catch(e){console.warn('Audio load failed:',name,e)}
+  }
+}
+
+function toggleAudio(){
+  if(!audioCtx)return initAudio();
+  audioEnabled=!audioEnabled;
+  document.getElementById('audio-btn').textContent=audioEnabled?'Audio On':'Audio Off';
+  document.getElementById('audio-btn').classList.toggle('active',audioEnabled);
+  if(!audioEnabled) stopAudio();
+}
+
+function playAudio(name,volume=0.3,loop=false){
+  if(!audioCtx||!audioEnabled||!tracks[name])return;
+  stopAudio();
+  const source=audioCtx.createBufferSource();
+  source.buffer=tracks[name];
+  source.loop=loop;
+  const gain=audioCtx.createGain();
+  gain.gain.setValueAtTime(0,audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(volume,audioCtx.currentTime+1);
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+  source.start();
+  currentSource=source;
+  currentTrack=name;
+  source._gain=gain;
+}
+
+function stopAudio(fadeMs=2000){
+  if(!currentSource)return;
+  try{
+    currentSource._gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+fadeMs/1000);
+    const s=currentSource;
+    setTimeout(()=>{try{s.stop()}catch(e){}},fadeMs);
+  }catch(e){}
+  currentSource=null;currentTrack=null;
+}
+
+function handleMusic(d){
+  if(d.action==='play') playAudio(d.track,d.volume||0.3,d.loop||false);
+  else if(d.action==='stop') stopAudio(d.fade_ms||2000);
+}
+
+let captionOn=false;
+function toggleCaption(){
+  captionOn=!captionOn;
+  const btn=document.getElementById('caption-btn');
+  btn.textContent=captionOn?'Caption On':'Caption Off';
+  btn.classList.toggle('active',captionOn);
+  if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:'caption_toggle',active:captionOn}));
+}
+
+function toggleVoice(){
+  voiceEnabled=!voiceEnabled;
+  const btn=document.getElementById('voice-btn');
+  btn.textContent=voiceEnabled?'Voice On':'Voice Off';
+  btn.classList.toggle('active',voiceEnabled);
+  if(voiceEnabled&&!audioCtx) initAudio();
+}
+
+// Figurate TTS voice announcements
+async function speakTTS(text){
+  if(!audioCtx||!voiceEnabled) return;
+  ttsQueue.push(text);
+  if(ttsSpeaking) return;
+  while(ttsQueue.length>0){
+    ttsSpeaking=true;
+    const msg=ttsQueue.shift();
+    try{
+      const resp=await fetch(FG_API,{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+FG_KEY,'Content-Type':'application/json'},
+        body:JSON.stringify({text:msg,characterId:FG_CHAR})
+      });
+      const json=await resp.json();
+      if(json.success&&json.data.audio){
+        const bin=atob(json.data.audio);
+        const buf=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+        const audioBuf=await audioCtx.decodeAudioData(buf.buffer);
+        const src=audioCtx.createBufferSource();
+        src.buffer=audioBuf;
+        const gain=audioCtx.createGain();
+        gain.gain.value=0.8;
+        src.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start();
+        await new Promise(r=>{src.onended=r;setTimeout(r,audioBuf.duration*1000+500)});
+      }
+    }catch(e){console.warn('TTS error:',e)}
+  }
+  ttsSpeaking=false;
+}
+
+function checkStateAnnounce(d){
+  const stage=d.stage||{};
+  const vj=d.vjepa||{};
+  const totalPeople=d.total_people||0;
+  const stageState=stage.state||'idle';
+  const submode=stage.submode||'';
+
+  // State transitions
+  if(prevStageState!==null && stageState!==prevStageState){
+    if(stageState==='class_active') speakTTS('Class is starting. Welcome everyone.');
+    else if(stageState==='class_ending') speakTTS('Class is ending soon.');
+    else if(stageState==='post_class') speakTTS('Class has ended. Thank you all.');
+    else if(stageState==='pre_class') speakTTS('Class will begin shortly.');
+  }
+
+  // Submode transitions (lecture/group_work/individual_work)
+  if(prevSubmode!==null && submode!==prevSubmode && stageState==='class_active'){
+    if(submode==='lecture') speakTTS('Lecture mode detected.');
+    else if(submode==='group_work') speakTTS('Group work detected.');
+    else if(submode==='individual_work') speakTTS('Individual work detected.');
+    else if(submode==='empty_room') speakTTS('The room appears empty.');
+  }
+
+  // People entering empty room
+  if(prevPeopleCount===0 && totalPeople>0 && stageState==='idle'){
+    speakTTS('Someone has entered the room.');
+  }
+
+  prevStageState=stageState;
+  prevSubmode=submode;
+  prevPeopleCount=totalPeople;
+}
+
+// Voice input via Web Speech API (Jabra mic)
+let recognition=null, micActive=false;
+function toggleMic(){
+  if(micActive){ stopMic(); return; }
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    alert('Speech recognition not supported. Use Chrome.'); return;
+  }
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new SR();
+  recognition.continuous=false;
+  recognition.interimResults=true;
+  recognition.lang='en-US';
+  const input=document.getElementById('chat-input');
+  const btn=document.getElementById('mic-btn');
+  recognition.onstart=()=>{
+    micActive=true;
+    btn.style.background='#e74c3c';
+    btn.textContent='🔴';
+    input.placeholder='Listening...';
+  };
+  recognition.onresult=(e)=>{
+    let final='',interim='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript;
+      else interim+=e.results[i][0].transcript;
+    }
+    input.value=final||interim;
+  };
+  recognition.onend=()=>{
+    micActive=false;
+    btn.style.background='#333';
+    btn.textContent='🎤';
+    input.placeholder='Ask the classroom assistant...';
+    if(input.value.trim()) sendChat();
+  };
+  recognition.onerror=(e)=>{
+    console.warn('Speech error:',e.error);
+    micActive=false;
+    btn.style.background='#333';
+    btn.textContent='🎤';
+    input.placeholder='Ask the classroom assistant...';
+  };
+  recognition.start();
+}
+function stopMic(){
+  if(recognition) recognition.stop();
+  micActive=false;
+  document.getElementById('mic-btn').style.background='#333';
+  document.getElementById('mic-btn').textContent='🎤';
+}
+
+// Chat with classroom assistant
+let lastState={};
+function _saveState(d){ lastState=d; }
+
+async function sendChat(){
+  const input=document.getElementById('chat-input');
+  const q=input.value.trim();
+  if(!q) return;
+  input.value='';
+  if(!audioCtx) await initAudio();
+
+  // Build context from current state
+  const s=lastState;
+  const stage=s.stage||{};
+  const vj=s.vjepa||{};
+  const cal=s.calendar||{};
+  const cams=s.cameras||{};
+  const tp=s.total_people||0;
+
+  const ctx=[];
+  if(cal.current_class) ctx.push('Current class: '+cal.current_class.name+', ends at '+new Date(cal.current_class.end_time).toLocaleTimeString());
+  else if(cal.next_class) ctx.push('No class now. Next: '+cal.next_class.name);
+  else ctx.push('No class scheduled');
+  ctx.push('Room state: '+(LABELS[vj['class']]||'unknown')+' ('+((vj.confidence||0)*100).toFixed(0)+'% confidence)');
+  ctx.push('People in room: '+tp);
+  for(const[cid,info] of Object.entries(cams)) ctx.push(cid+': '+info.people+' people');
+  ctx.push('Calendar status: '+(cal.state||'unknown'));
+
+  // Gemini as brain, Figurate TTS as voice
+  const context=ctx.join('. ');
+  const sysMsg='You are a friendly classroom assistant. Answer in 1-2 short sentences. Speak naturally. Current room info: '+context;
+
+  try{
+    const resp=await fetch(GEMINI_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        system_instruction:{parts:[{text:sysMsg}]},
+        contents:[{role:'user',parts:[{text:q}]}],
+        generationConfig:{maxOutputTokens:150,temperature:0.7,thinkingConfig:{thinkingBudget:0}}
+      })
+    });
+    const json=await resp.json();
+    const answer=json?.candidates?.[0]?.content?.parts?.[0]?.text||'Sorry, I could not understand that.';
+    speakTTS(answer);
+  }catch(e){
+    console.error('Gemini error:',e);
+    speakTTS('Sorry, I am having trouble connecting right now.');
+  }
+}
+
+connect();
+</script>
+</body>
+</html>

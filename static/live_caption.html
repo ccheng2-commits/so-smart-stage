@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Stage — Live Caption</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    color: #ffffff;
+    font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    padding: 20px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+
+  .header h1 {
+    font-size: 18px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.4);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+
+  .status-dot.connected {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34,197,94,0.5);
+  }
+
+  .stage-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.4);
+  }
+  .stage-status .stage-icon {
+    font-size: 14px;
+  }
+  .stage-status.detecting {
+    background: rgba(251,191,36,0.15);
+    color: #fbbf24;
+  }
+  .stage-status.active {
+    background: rgba(34,197,94,0.15);
+    color: #22c55e;
+  }
+  .stage-progress {
+    width: 60px;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .stage-progress-bar {
+    height: 100%;
+    background: #fbbf24;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+
+  .caption-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 40px 80px 60px;
+    overflow: hidden;
+  }
+
+  .caption-text {
+    font-size: 42px;
+    font-weight: 400;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.95);
+    max-height: 70vh;
+    overflow: hidden;
+  }
+
+  .caption-text .line {
+    margin-bottom: 8px;
+    animation: fadeIn 0.2s ease-in;
+  }
+
+  .caption-text .partial {
+    color: rgba(255,255,255,0.45);
+    font-style: italic;
+  }
+
+  .caption-text .latest {
+    color: #ffffff;
+  }
+
+  .caption-text .older {
+    color: rgba(255,255,255,0.35);
+  }
+
+  .waiting {
+    font-size: 28px;
+    color: rgba(255,255,255,0.2);
+    text-align: center;
+    padding-bottom: 20vh;
+  }
+
+  .waiting .dots::after {
+    content: '';
+    animation: dots 1.5s steps(4, end) infinite;
+  }
+
+  @keyframes dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .size-slider {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    outline: none;
+  }
+  .size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.6);
+    cursor: pointer;
+  }
+  .size-label {
+    font-size: 12px;
+    color: rgba(255,255,255,0.35);
+    min-width: 24px;
+    text-align: center;
+  }
+  .fullscreen-btn {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: rgba(255,255,255,0.5);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .fullscreen-btn:hover {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Smart Stage — Live Caption</h1>
+  <div style="display:flex;align-items:center;gap:20px;">
+    <div class="stage-status" id="stageStatus">
+      <span class="stage-icon" id="stageIcon">--</span>
+      <span id="stageText">No camera</span>
+      <div class="stage-progress" id="stageProgressWrap" style="display:none;">
+        <div class="stage-progress-bar" id="stageProgress" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+    <div class="controls">
+      <span class="size-label">A</span>
+      <input type="range" class="size-slider" id="sizeSlider" min="24" max="80" value="42" oninput="updateFontSize(this.value)">
+      <span class="size-label" style="font-size:16px;">A</span>
+    </div>
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+  </div>
+</div>
+
+<div class="caption-area">
+  <div class="caption-text" id="captionText">
+    <div class="waiting">Waiting for speech<span class="dots"></span></div>
+  </div>
+</div>
+
+<script>
+const WS_PORT = 8766;
+const MAX_VISIBLE_LINES = 6;
+let ws;
+let reconnectTimer;
+
+function connect() {
+  const host = window.location.hostname || 'localhost';
+  ws = new WebSocket(`ws://${host}:${WS_PORT}`);
+
+  ws.onopen = () => {
+    document.getElementById('statusDot').classList.add('connected');
+    document.getElementById('statusText').textContent = 'Listening';
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onclose = () => {
+    document.getElementById('statusDot').classList.remove('connected');
+    document.getElementById('statusText').textContent = 'Disconnected';
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    renderCaption(data);
+  };
+}
+
+function renderCaption(data) {
+  const container = document.getElementById('captionText');
+  const lines = (data.text || '').split('\n').filter(l => l.trim());
+  const partial = data.partial || '';
+
+  if (lines.length === 0 && !partial) {
+    container.innerHTML = '<div class="waiting">Waiting for speech<span class="dots"></span></div>';
+    return;
+  }
+
+  // Show last N lines
+  const visible = lines.slice(-MAX_VISIBLE_LINES);
+  let html = '';
+
+  visible.forEach((line, i) => {
+    const isLatest = (i === visible.length - 1) && !partial;
+    html += `<div class="line ${isLatest ? 'latest' : 'older'}">${escapeHtml(line)}</div>`;
+  });
+
+  if (partial) {
+    html += `<div class="line partial latest">${escapeHtml(partial)}</div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Auto scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+function updateFontSize(val) {
+  document.getElementById('captionText').style.fontSize = val + 'px';
+}
+
+// Poll stage detector status with debounce
+let lastStageState = null;
+let lastStageUpdate = 0;
+
+function pollStageStatus() {
+  const host = window.location.hostname || 'localhost';
+  fetch(`http://${host}:8080/stage_status.json?t=${Date.now()}`)
+    .then(r => r.json())
+    .then(data => {
+      // Ignore stale data (older than 3 seconds)
+      if (data.ts && (Date.now()/1000 - data.ts) > 5) return;
+
+      lastStageState = data;
+      lastStageUpdate = Date.now();
+      renderStageStatus(data);
+    })
+    .catch(() => {
+      // Keep last known state for 5 seconds on fetch failure
+      if (lastStageState && (Date.now() - lastStageUpdate) < 5000) return;
+    });
+}
+
+function renderStageStatus(data) {
+  const el = document.getElementById('stageStatus');
+  const icon = document.getElementById('stageIcon');
+  const text = document.getElementById('stageText');
+  const progressWrap = document.getElementById('stageProgressWrap');
+  const progress = document.getElementById('stageProgress');
+
+  el.className = 'stage-status';
+
+  if (data.state === 'active') {
+    el.classList.add('active');
+    icon.textContent = '👤';
+    text.textContent = 'Stage Active';
+    progressWrap.style.display = 'none';
+  } else if (data.state === 'waiting' && data.still > 0) {
+    el.classList.add('detecting');
+    icon.textContent = '👤';
+    const pct = Math.min(100, (data.still / data.trigger) * 100);
+    text.textContent = `${Math.round(data.still)}s / ${data.trigger}s`;
+    progressWrap.style.display = 'block';
+    progress.style.width = pct + '%';
+  } else if (data.state === 'ending') {
+    el.classList.add('detecting');
+    icon.textContent = '⏳';
+    text.textContent = data.detail;
+    progressWrap.style.display = 'none';
+  } else {
+    icon.textContent = '--';
+    text.textContent = 'No person';
+    progressWrap.style.display = 'none';
+  }
+}
+
+setInterval(pollStageStatus, 1000);
+
+// Start
+connect();
+</script>
+</body>
+</html>
