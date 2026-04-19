@@ -477,14 +477,36 @@ def _send_music_command(cmd):
             log.info("MUSIC: chime")
     elif cmd in MUSIC_URLS and MUSIC_URLS[cmd]:
         url = MUSIC_URLS[cmd]
-        _music_proc = subprocess.Popen(
-            ["mpv", "--no-video", "--audio-device=alsa/plughw:2,0",
-             "--volume=100", "--really-quiet", url],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            preexec_fn=os.setsid)
-        log.info("MUSIC: playing %s via YouTube → Jabra", cmd)
+        local_wav = AUDIO_DIR / f"{cmd}.wav"
+        started = False
+        try:
+            _music_proc = subprocess.Popen(
+                ["mpv", "--no-video", "--audio-device=alsa/plughw:2,0",
+                 "--volume=100", "--really-quiet", url],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid)
+            # Give mpv/yt-dlp a second to either start streaming or fail.
+            # yt-dlp failures (404, rate-limit, extractor breakage) exit fast.
+            time.sleep(1.0)
+            if _music_proc.poll() is None:
+                log.info("MUSIC: playing %s via YouTube → Jabra", cmd)
+                started = True
+            else:
+                log.warning("MUSIC: mpv exited %d for %s; falling back",
+                    _music_proc.returncode, cmd)
+                _music_proc = None
+        except Exception as e:
+            log.warning("MUSIC: mpv launch error %s", e)
+            _music_proc = None
+
+        if not started and local_wav.exists():
+            _music_proc = subprocess.Popen(
+                ["aplay", "-D", "plughw:2,0", str(local_wav)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                preexec_fn=os.setsid)
+            log.info("MUSIC: playing %s (local wav fallback) via Jabra", cmd)
     else:
-        # Fallback to local wav
+        # No URL for this cmd — go straight to local wav
         audio_file = AUDIO_DIR / f"{cmd}.wav"
         if audio_file.exists():
             _music_proc = subprocess.Popen(
