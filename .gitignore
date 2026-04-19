@@ -1,0 +1,51 @@
+# Secrets
+.env
+*.env
+config.js
+static/config.js
+
+# Runtime state
+brain_status.json
+stage_status.json
+vjepa_status.json
+vjepa_history.jsonl
+.spotify_cache
+
+# Real schedule (the example one is committed instead)
+schedule.json
+
+# Local audio assets (use your own — see audio/README.md)
+audio/*.wav
+audio/*.mp3
+!audio/chime.wav
+
+# Recorded sessions
+recordings/
+*.wav
+!audio/chime.wav
+
+# Sherpa-onnx model (200+ MB — see models/download.sh)
+models/sherpa-onnx-*
+models/**/*.onnx
+models/**/*.int8.onnx
+models/**/*.tar.bz2
+
+# Llama.cpp quantized model (if ever enabled)
+*.gguf
+*.bin
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Depthai cache
+.depthai/
+.depthai_cached_models/
+*.blob
