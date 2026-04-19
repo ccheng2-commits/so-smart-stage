@@ -922,14 +922,14 @@ def _voice_assistant_respond(question: str, loop):
         return
     _va_active = True
     try:
-        # Build context
+        # Build context from the live module-level state (brain_thread writes
+        # these globals under `lock`; we just read them here).
         with lock:
             ctx_parts = []
-            if brain_status.get("current_class"):
-                cc = brain_status["current_class"]
-                ctx_parts.append(f"Current class: {cc[name]}")
-            ctx_parts.append(f"Room state: {brain_status.get(stage_submode, unknown)}")
-            ctx_parts.append(f"People: {brain_status.get(total_people, 0)}")
+            if current_class:
+                ctx_parts.append(f"Current class: {current_class.get('name', '?')}")
+            ctx_parts.append(f"Room state: {stage_submode or 'idle'}")
+            ctx_parts.append(f"People: {sum(camera_counts.values()) if camera_counts else 0}")
             context = ". ".join(ctx_parts)
 
         # Gemini
